@@ -12,7 +12,9 @@ below, so the export/mapping don't need to match these exact headers):
 
   data/camelot_exports/*.csv (or .xlsx) — most recent file is used unless
   --export is given. Expected columns: item/SKU, batch/lot code, quantity
-  on hand.
+  on hand, and available quantity (Camelot's Quantity minus Qty Reserved
+  — if no such column is found, available quantity falls back to on-hand
+  quantity, i.e. assumes nothing is reserved).
 
   data/mapping/*.csv (or .xlsx) — one row per batch code. Expected
   columns: item/SKU, batch/lot code, packaging (old/new).
@@ -39,6 +41,10 @@ BATCH_ALIASES = [
     "lot number", "lotno", "lot no", "lot#", "lot #",
 ]
 QTY_ALIASES = ["qty", "quantity", "qtyonhand", "qty on hand", "on hand", "on hand qty", "onhandqty"]
+AVAILABLE_QTY_ALIASES = [
+    "available qty", "availableqty", "qty available", "available quantity",
+    "available", "available qty to order", "qty available to order",
+]
 PACKAGING_ALIASES = ["packaging", "packaging version", "old_new", "old/new", "version", "presentation"]
 
 
@@ -73,19 +79,34 @@ def _read_table(path: Path) -> pd.DataFrame:
     return pd.read_csv(path, dtype=str, keep_default_na=False)
 
 
+def _parse_qty(series: pd.Series) -> pd.Series:
+    # Camelot's export uses thousands separators (e.g. "4,994") which
+    # to_numeric would otherwise silently coerce to NaN -> 0.
+    return pd.to_numeric(series.str.replace(",", "", regex=False), errors="coerce").fillna(0).astype(int)
+
+
 def load_export(path: Path) -> pd.DataFrame:
     df = _read_table(path)
     item_col = _find_col(list(df.columns), ITEM_ALIASES, "item/SKU")
     batch_col = _find_col(list(df.columns), BATCH_ALIASES, "batch/lot code")
     qty_col = _find_col(list(df.columns), QTY_ALIASES, "quantity on hand")
 
+    try:
+        avail_col = _find_col(list(df.columns), AVAILABLE_QTY_ALIASES, "available quantity")
+    except SystemExit:
+        print(
+            "WARNING: no 'Available Qty' column found in the export — "
+            "falling back to on-hand quantity (i.e. assuming nothing reserved)."
+        )
+        avail_col = qty_col
+
     out = df[[item_col, batch_col, qty_col]].copy()
     out.columns = ["item", "batch", "qty"]
+    out["available_qty"] = df[avail_col]  # may equal qty_col in the fallback case
     out["item"] = out["item"].str.strip()
     out["batch"] = out["batch"].str.strip()
-    # Camelot's export uses thousands separators (e.g. "4,994") which
-    # to_numeric would otherwise silently coerce to NaN -> 0.
-    out["qty"] = pd.to_numeric(out["qty"].str.replace(",", "", regex=False), errors="coerce").fillna(0).astype(int)
+    out["qty"] = _parse_qty(out["qty"])
+    out["available_qty"] = _parse_qty(out["available_qty"])
     return out
 
 
@@ -123,14 +144,22 @@ def build_report(inventory: pd.DataFrame, mapping: pd.DataFrame) -> tuple[pd.Dat
     mapped = merged.dropna(subset=["packaging"])
 
     pivot = (
-        mapped.groupby(["item", "packaging"])["qty"]
+        mapped.groupby(["item", "packaging"])[["qty", "available_qty"]]
         .sum()
         .unstack(fill_value=0)
-        .reindex(columns=["old", "new"], fill_value=0)
-        .rename(columns={"old": "qty_old_packaging", "new": "qty_new_packaging"})
-        .reset_index()
     )
+    pivot.columns = [f"{value_col}_{pkg}" for value_col, pkg in pivot.columns]
+    pivot = pivot.reindex(
+        columns=["qty_old", "qty_new", "available_qty_old", "available_qty_new"], fill_value=0
+    ).rename(columns={
+        "qty_old": "qty_old_packaging",
+        "qty_new": "qty_new_packaging",
+        "available_qty_old": "available_qty_old_packaging",
+        "available_qty_new": "available_qty_new_packaging",
+    }).reset_index()
+
     pivot["total_qty"] = pivot["qty_old_packaging"] + pivot["qty_new_packaging"]
+    pivot["total_available_qty"] = pivot["available_qty_old_packaging"] + pivot["available_qty_new_packaging"]
 
     old_only = mapped[mapped["packaging"] == "old"]
     if old_only.empty:

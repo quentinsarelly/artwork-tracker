@@ -77,27 +77,39 @@ def build_summary(inventory: pd.DataFrame, mapping: pd.DataFrame, descriptions: 
         summary["qty_old_packaging"] / summary["total_qty"].replace(0, pd.NA) * 100
     ).round(1)
     summary = summary[[
-        "item", "description", "qty_old_packaging", "qty_new_packaging",
-        "total_qty", "pct_old_packaging", "old_packaging_batches",
+        "item", "description",
+        "qty_old_packaging", "available_qty_old_packaging",
+        "qty_new_packaging", "available_qty_new_packaging",
+        "total_qty", "total_available_qty",
+        "pct_old_packaging", "old_packaging_batches",
     ]].rename(columns={
         "item": "Item",
         "description": "Description",
         "qty_old_packaging": "Qty Old Packaging",
+        "available_qty_old_packaging": "Available Qty Old Packaging",
         "qty_new_packaging": "Qty New Packaging",
+        "available_qty_new_packaging": "Available Qty New Packaging",
         "total_qty": "Total Qty On Hand",
+        "total_available_qty": "Total Available Qty",
         "pct_old_packaging": "% Old Packaging",
         "old_packaging_batches": "Old Packaging Batch(es)",
     }).sort_values("Qty Old Packaging", ascending=False)
 
     total_old = int(summary["Qty Old Packaging"].sum())
+    total_avail_old = int(summary["Available Qty Old Packaging"].sum())
     total_new = int(summary["Qty New Packaging"].sum())
+    total_avail_new = int(summary["Available Qty New Packaging"].sum())
     total_qty = total_old + total_new
+    total_avail_qty = total_avail_old + total_avail_new
     total_row = pd.DataFrame([{
         "Item": "TOTAL",
         "Description": f"{len(summary)} products",
         "Qty Old Packaging": total_old,
+        "Available Qty Old Packaging": total_avail_old,
         "Qty New Packaging": total_new,
+        "Available Qty New Packaging": total_avail_new,
         "Total Qty On Hand": total_qty,
+        "Total Available Qty": total_avail_qty,
         "% Old Packaging": round(total_old / total_qty * 100, 1) if total_qty else None,
         "Old Packaging Batch(es)": "",
     }])
