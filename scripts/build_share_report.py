@@ -55,14 +55,17 @@ def _autosize(ws, df: pd.DataFrame) -> None:
         ws.column_dimensions[get_column_letter(i)].width = min(width, 60)
 
 
-def _write_sheet(writer, df: pd.DataFrame, sheet_name: str, note: str) -> None:
+def _write_sheet(writer, df: pd.DataFrame, sheet_name: str, note: str, bold_rows: tuple[int, ...] = ()) -> None:
     df.to_excel(writer, sheet_name=sheet_name, index=False, startrow=2)
     ws = writer.sheets[sheet_name]
     ws["A1"] = note
     ws["A1"].font = Font(italic=True, size=9)
     for cell in ws[3]:
         cell.font = Font(bold=True)
-    ws.freeze_panes = "A4"
+    for row_offset in bold_rows:
+        for cell in ws[3 + row_offset]:
+            cell.font = Font(bold=True)
+    ws.freeze_panes = f"A{4 + len(bold_rows)}"
     _autosize(ws, df)
 
 
@@ -85,6 +88,21 @@ def build_summary(inventory: pd.DataFrame, mapping: pd.DataFrame, descriptions: 
         "pct_old_packaging": "% Old Packaging",
         "old_packaging_batches": "Old Packaging Batch(es)",
     }).sort_values("Qty Old Packaging", ascending=False)
+
+    total_old = int(summary["Qty Old Packaging"].sum())
+    total_new = int(summary["Qty New Packaging"].sum())
+    total_qty = total_old + total_new
+    total_row = pd.DataFrame([{
+        "Item": "TOTAL",
+        "Description": f"{len(summary)} products",
+        "Qty Old Packaging": total_old,
+        "Qty New Packaging": total_new,
+        "Total Qty On Hand": total_qty,
+        "% Old Packaging": round(total_old / total_qty * 100, 1) if total_qty else None,
+        "Old Packaging Batch(es)": "",
+    }])
+    summary = pd.concat([total_row, summary], ignore_index=True)
+
     return summary, unmapped
 
 
@@ -135,6 +153,7 @@ def main() -> None:
         _write_sheet(
             writer, summary, "Packaging Summary",
             note=f"Old vs. new packaging on hand as of {today}. For sales / PO allocation planning.",
+            bold_rows=(1,),
         )
         _write_sheet(
             writer, needs_lot, "Needs Lot Number",
@@ -148,7 +167,7 @@ def main() -> None:
         )
 
     print(f"\nWrote share report to {out_path}")
-    print(f"  Packaging Summary: {len(summary)} products")
+    print(f"  Packaging Summary: {len(summary) - 1} products (+ totals row)")
     print(f"  Needs Lot Number:  {len(needs_lot)} rows, {int(needs_lot['Qty'].sum()) if len(needs_lot) else 0} units")
     print(f"  Unmapped Batches:  {len(unmapped_batches)} rows")
 
