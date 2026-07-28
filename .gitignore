@@ -1,0 +1,11 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Manual Camelot exports and generated reports contain live business data
+data/camelot_exports/*
+!data/camelot_exports/.gitkeep
+reports/*
+!reports/.gitkeep
