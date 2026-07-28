@@ -34,7 +34,10 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent.parent
 
 ITEM_ALIASES = ["item", "itemnumber", "item number", "sku", "product", "product sku"]
-BATCH_ALIASES = ["batch", "batch code", "batch number", "batchno", "lot", "lot code", "lot number", "lotno", "lot no"]
+BATCH_ALIASES = [
+    "batch", "batch code", "batch number", "batchno", "lot", "lot code",
+    "lot number", "lotno", "lot no", "lot#", "lot #",
+]
 QTY_ALIASES = ["qty", "quantity", "qtyonhand", "qty on hand", "on hand", "on hand qty", "onhandqty"]
 PACKAGING_ALIASES = ["packaging", "packaging version", "old_new", "old/new", "version", "presentation"]
 
@@ -62,9 +65,12 @@ def _latest_file(directory: Path) -> Path:
 
 
 def _read_table(path: Path) -> pd.DataFrame:
+    # keep_default_na=False: Camelot uses the literal string "NA" as its
+    # batch code for non-lot-tracked items. Pandas' default NA-string list
+    # includes "NA" and would otherwise silently turn it into a real null.
     if path.suffix.lower() == ".xlsx":
-        return pd.read_excel(path, dtype=str)
-    return pd.read_csv(path, dtype=str)
+        return pd.read_excel(path, dtype=str, keep_default_na=False)
+    return pd.read_csv(path, dtype=str, keep_default_na=False)
 
 
 def load_export(path: Path) -> pd.DataFrame:
@@ -77,7 +83,9 @@ def load_export(path: Path) -> pd.DataFrame:
     out.columns = ["item", "batch", "qty"]
     out["item"] = out["item"].str.strip()
     out["batch"] = out["batch"].str.strip()
-    out["qty"] = pd.to_numeric(out["qty"], errors="coerce").fillna(0).astype(int)
+    # Camelot's export uses thousands separators (e.g. "4,994") which
+    # to_numeric would otherwise silently coerce to NaN -> 0.
+    out["qty"] = pd.to_numeric(out["qty"].str.replace(",", "", regex=False), errors="coerce").fillna(0).astype(int)
     return out
 
 
@@ -103,6 +111,12 @@ def load_mapping(path: Path) -> pd.DataFrame:
 
 
 def build_report(inventory: pd.DataFrame, mapping: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    # Only products named in the mapping file are part of the packaging
+    # transition. Without this filter, every batch of every unrelated
+    # product in the warehouse would show up as "unmapped" noise.
+    transitioning_items = set(mapping["item"])
+    inventory = inventory[inventory["item"].isin(transitioning_items)]
+
     merged = inventory.merge(mapping, on=["item", "batch"], how="left")
 
     unmapped = merged[merged["packaging"].isna()]
@@ -118,13 +132,16 @@ def build_report(inventory: pd.DataFrame, mapping: pd.DataFrame) -> tuple[pd.Dat
     )
     pivot["total_qty"] = pivot["qty_old_packaging"] + pivot["qty_new_packaging"]
 
-    old_batches = (
-        mapped[mapped["packaging"] == "old"]
-        .groupby("item")
-        .apply(lambda g: ", ".join(f"{b} ({q})" for b, q in zip(g["batch"], g["qty"])), include_groups=False)
-        .rename("old_packaging_batches")
-        .reset_index()
-    )
+    old_only = mapped[mapped["packaging"] == "old"]
+    if old_only.empty:
+        old_batches = pd.DataFrame(columns=["item", "old_packaging_batches"])
+    else:
+        old_batches = (
+            old_only.groupby("item")
+            .apply(lambda g: ", ".join(f"{b} ({q})" for b, q in zip(g["batch"], g["qty"])), include_groups=False)
+            .rename("old_packaging_batches")
+            .reset_index()
+        )
     pivot = pivot.merge(old_batches, on="item", how="left")
     pivot["old_packaging_batches"] = pivot["old_packaging_batches"].fillna("")
 

@@ -64,9 +64,11 @@ def _latest_file(directory: Path) -> Path:
 
 
 def _read_table(path: Path) -> pd.DataFrame:
+    # keep_default_na=False: avoid pandas silently nulling out SKU/item
+    # values that happen to match its default NA-string list (e.g. "NA").
     if path.suffix.lower() == ".xlsx":
-        return pd.read_excel(path, dtype=str)
-    return pd.read_csv(path, dtype=str)
+        return pd.read_excel(path, dtype=str, keep_default_na=False)
+    return pd.read_csv(path, dtype=str, keep_default_na=False)
 
 
 def load_on_hand_inventory() -> pd.DataFrame:
@@ -97,7 +99,7 @@ def load_po_demand(path: Path) -> pd.DataFrame:
     out = df[[item_col, qty_col]].copy()
     out.columns = ["item", "demand"]
     out["item"] = out["item"].str.strip()
-    out["demand"] = pd.to_numeric(out["demand"], errors="coerce").fillna(0).astype(int)
+    out["demand"] = pd.to_numeric(out["demand"].str.replace(",", "", regex=False), errors="coerce").fillna(0).astype(int)
     return out.groupby("item", as_index=False)["demand"].sum()
 
 

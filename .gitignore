@@ -3,6 +3,10 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+*:Zone.Identifier
+
+# Reference copy of the API docs (canonical copy lives in apisandbox/camelot/)
+API - API Documentation*.pdf
 
 # Manual Camelot exports and generated reports contain live business data
 data/camelot_exports/*
