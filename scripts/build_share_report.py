@@ -1,24 +1,28 @@
 """
 Build a shareable Excel report for the sales and warehouse teams, from
-the same inputs as packaging_report.py (Camelot lot export + batch ->
-packaging mapping).
+the same inputs as packaging_report.py (Camelot/ShipHero lot export +
+batch -> packaging mapping).
 
 Three tabs:
   - "Packaging Summary" (sales): old vs. new packaging qty per product,
     for deciding what to allocate to each PO.
   - "Needs Lot Number" (warehouse): stock with no lot/batch code recorded
-    in Camelot (LOT# = "NA" or blank) for products in the transition.
-    Warehouse should investigate and add the correct lot number in
-    Camelot, then re-run this report.
+    (LOT# = "NA" or blank) for products in the transition. Warehouse
+    should investigate and add the correct lot number, then re-run this
+    report.
   - "Unmapped Batches": batch codes present in the export but not yet
     classified old/new in the mapping file — a mapping-file maintenance
     item, not a warehouse task.
 
-Output: reports/packaging_share_report_<timestamp>.xlsx
+--warehouse ALL produces one file per warehouse (US and MX), not a
+combined file.
+
+Output: reports/packaging_share_report_<warehouse>_<timestamp>.xlsx
 
 Usage:
-    python scripts/build_share_report.py
-    python scripts/build_share_report.py --export ... --mapping ... --out ...
+    python scripts/build_share_report.py --warehouse US
+    python scripts/build_share_report.py --warehouse ALL
+    python scripts/build_share_report.py --warehouse MX --export ... --mapping ... --out ...
 """
 
 import argparse
@@ -29,7 +33,16 @@ import pandas as pd
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
 
-from packaging_report import ITEM_ALIASES, _find_col, _latest_file, _read_table, build_report, load_export, load_mapping
+from packaging_report import (
+    ITEM_ALIASES,
+    WAREHOUSES,
+    _find_col,
+    _latest_file,
+    _read_table,
+    build_report,
+    load_export,
+    load_mapping,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -136,41 +149,38 @@ def build_unmapped_batches(unmapped: pd.DataFrame, descriptions: pd.DataFrame) -
     }).sort_values(["Item", "LOT#"])
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--export", type=Path, default=None, help="Camelot lot/batch inventory export file")
-    parser.add_argument("--mapping", type=Path, default=None, help="Batch -> packaging mapping file")
-    parser.add_argument("--out", type=Path, default=None, help="Output .xlsx path")
-    args = parser.parse_args()
+def run_for_warehouse(warehouse: str, export: Path | None, mapping: Path | None, out: Path | None) -> None:
+    label = WAREHOUSES[warehouse]["label"]
+    print(f"\n=== {label} ===")
 
-    export_path = args.export or _latest_file(ROOT / "data" / "camelot_exports")
-    mapping_path = args.mapping or _latest_file(ROOT / "data" / "mapping")
+    export_path = export or _latest_file(WAREHOUSES[warehouse]["export_dir"])
+    mapping_path = mapping or _latest_file(ROOT / "data" / "mapping")
 
     print(f"Inventory export: {export_path}")
     print(f"Mapping file:     {mapping_path}")
 
     inventory = load_export(export_path)
-    mapping = load_mapping(mapping_path)
+    mapping_df = load_mapping(mapping_path)
     descriptions = load_descriptions(export_path)
 
-    summary, unmapped = build_summary(inventory, mapping, descriptions)
+    summary, unmapped = build_summary(inventory, mapping_df, descriptions)
     needs_lot = build_needs_lot(unmapped, descriptions)
     unmapped_batches = build_unmapped_batches(unmapped, descriptions)
 
-    out_path = args.out or ROOT / "reports" / f"packaging_share_report_{datetime.now():%Y%m%d_%H%M%S}.xlsx"
+    out_path = out or ROOT / "reports" / f"packaging_share_report_{warehouse}_{datetime.now():%Y%m%d_%H%M%S}.xlsx"
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     today = datetime.now().strftime("%Y-%m-%d")
     with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
         _write_sheet(
             writer, summary, "Packaging Summary",
-            note=f"Old vs. new packaging on hand as of {today}. For sales / PO allocation planning.",
+            note=f"{label} — old vs. new packaging on hand as of {today}. For sales / PO allocation planning.",
             bold_rows=(1,),
         )
         _write_sheet(
             writer, needs_lot, "Needs Lot Number",
-            note="Warehouse: this stock has no lot number recorded in Camelot. Please investigate "
-                 "and add the correct lot number in Camelot, then ask for this report to be re-run.",
+            note=f"{label} warehouse: this stock has no lot number recorded. Please investigate "
+                 "and add the correct lot number, then ask for this report to be re-run.",
         )
         _write_sheet(
             writer, unmapped_batches, "Unmapped Batches",
@@ -182,6 +192,22 @@ def main() -> None:
     print(f"  Packaging Summary: {len(summary) - 1} products (+ totals row)")
     print(f"  Needs Lot Number:  {len(needs_lot)} rows, {int(needs_lot['Qty'].sum()) if len(needs_lot) else 0} units")
     print(f"  Unmapped Batches:  {len(unmapped_batches)} rows")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--warehouse", choices=["US", "MX", "ALL"], default="US", help="Which warehouse to report on")
+    parser.add_argument("--export", type=Path, default=None, help="Inventory export file (only valid with a single --warehouse)")
+    parser.add_argument("--mapping", type=Path, default=None, help="Batch -> packaging mapping file")
+    parser.add_argument("--out", type=Path, default=None, help="Output .xlsx path (only valid with a single --warehouse)")
+    args = parser.parse_args()
+
+    warehouses = ["US", "MX"] if args.warehouse == "ALL" else [args.warehouse]
+    if len(warehouses) > 1 and (args.export or args.out):
+        parser.error("--export/--out require a single --warehouse (US or MX), not ALL")
+
+    for warehouse in warehouses:
+        run_for_warehouse(warehouse, args.export, args.mapping, args.out)
 
 
 if __name__ == "__main__":

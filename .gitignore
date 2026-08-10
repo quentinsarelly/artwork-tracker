@@ -8,9 +8,11 @@ venv/
 # Reference copy of the API docs (canonical copy lives in apisandbox/camelot/)
 API - API Documentation*.pdf
 
-# Manual Camelot exports, mapping data, and generated reports contain live business data
+# Manual Camelot/ShipHero exports, mapping data, and generated reports contain live business data
 data/camelot_exports/*
 !data/camelot_exports/.gitkeep
+data/shiphero_exports/*
+!data/shiphero_exports/.gitkeep
 data/mapping/*
 !data/mapping/.gitkeep
 reports/*

@@ -3,27 +3,31 @@ Old vs. new packaging report.
 
 Camelot's SOAP API has no lot/batch field (confirmed live — see
 spike_check_lot_fields.py), so batch-level inventory must come from a
-manual export out of the Camelot UI. This script joins that export
-against a batch -> packaging mapping file to report, per product, how
-much old-packaging vs new-packaging stock remains.
+manual export out of the Camelot UI (US warehouse) or ShipHero (MX
+warehouse). This script joins that export against a batch -> packaging
+mapping file to report, per product, how much old-packaging vs
+new-packaging stock remains.
 
 Inputs (column names are matched case-insensitively against the aliases
 below, so the export/mapping don't need to match these exact headers):
 
-  data/camelot_exports/*.csv (or .xlsx) — most recent file is used unless
-  --export is given. Expected columns: item/SKU, batch/lot code, quantity
-  on hand, and available quantity (Camelot's Quantity minus Qty Reserved
-  — if no such column is found, available quantity falls back to on-hand
-  quantity, i.e. assumes nothing is reserved).
+  data/camelot_exports/*.csv (or .xlsx) [--warehouse US] or
+  data/shiphero_exports/*.csv (or .xlsx) [--warehouse MX] — most recent
+  file is used unless --export is given. Expected columns: item/SKU,
+  batch/lot code, quantity on hand, and available quantity (on-hand minus
+  reserved — if no such column is found, available quantity falls back to
+  on-hand quantity, i.e. assumes nothing is reserved).
 
-  data/mapping/*.csv (or .xlsx) — one row per batch code. Expected
-  columns: item/SKU, batch/lot code, packaging (old/new).
+  data/mapping/*.csv (or .xlsx) — one row per batch code, shared across
+  both warehouses. Expected columns: item/SKU, batch/lot code, packaging
+  (old/new).
 
-Output: reports/packaging_report_<timestamp>.csv
+Output: reports/packaging_report_<warehouse>_<timestamp>.csv
 
 Usage:
-    python scripts/packaging_report.py
-    python scripts/packaging_report.py --export data/camelot_exports/foo.csv --mapping data/mapping/bar.csv
+    python scripts/packaging_report.py --warehouse US
+    python scripts/packaging_report.py --warehouse ALL
+    python scripts/packaging_report.py --warehouse MX --export data/shiphero_exports/foo.csv --mapping data/mapping/bar.csv
 """
 
 import argparse
@@ -34,6 +38,11 @@ from pathlib import Path
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent
+
+WAREHOUSES = {
+    "US": {"export_dir": ROOT / "data" / "camelot_exports", "label": "US (Camelot)"},
+    "MX": {"export_dir": ROOT / "data" / "shiphero_exports", "label": "MX (ShipHero)"},
+}
 
 ITEM_ALIASES = ["item", "itemnumber", "item number", "sku", "product", "product sku"]
 BATCH_ALIASES = [
@@ -182,25 +191,22 @@ def build_report(inventory: pd.DataFrame, mapping: pd.DataFrame) -> tuple[pd.Dat
     return pivot.sort_values("item"), unmapped
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--export", type=Path, default=None, help="Camelot lot/batch inventory export file")
-    parser.add_argument("--mapping", type=Path, default=None, help="Batch -> packaging mapping file")
-    parser.add_argument("--out", type=Path, default=None, help="Output report path")
-    args = parser.parse_args()
+def run_for_warehouse(warehouse: str, export: Path | None, mapping: Path | None, out: Path | None) -> bool:
+    """Returns True if the report came out clean (no unmapped batches)."""
+    print(f"\n=== {WAREHOUSES[warehouse]['label']} ===")
 
-    export_path = args.export or _latest_file(ROOT / "data" / "camelot_exports")
-    mapping_path = args.mapping or _latest_file(ROOT / "data" / "mapping")
+    export_path = export or _latest_file(WAREHOUSES[warehouse]["export_dir"])
+    mapping_path = mapping or _latest_file(ROOT / "data" / "mapping")
 
     print(f"Inventory export: {export_path}")
     print(f"Mapping file:     {mapping_path}")
 
     inventory = load_export(export_path)
-    mapping = load_mapping(mapping_path)
+    mapping_df = load_mapping(mapping_path)
 
-    report, unmapped = build_report(inventory, mapping)
+    report, unmapped = build_report(inventory, mapping_df)
 
-    out_path = args.out or ROOT / "reports" / f"packaging_report_{datetime.now():%Y%m%d_%H%M%S}.csv"
+    out_path = out or ROOT / "reports" / f"packaging_report_{warehouse}_{datetime.now():%Y%m%d_%H%M%S}.csv"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     report.to_csv(out_path, index=False)
 
@@ -213,6 +219,27 @@ def main() -> None:
             "EXCLUDED from the report (not counted as old or new). Add these to the mapping file: ***"
         )
         print(unmapped[["item", "batch", "qty"]].drop_duplicates().to_string(index=False))
+        return False
+    return True
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--warehouse", choices=["US", "MX", "ALL"], default="US", help="Which warehouse to report on")
+    parser.add_argument("--export", type=Path, default=None, help="Inventory export file (only valid with a single --warehouse)")
+    parser.add_argument("--mapping", type=Path, default=None, help="Batch -> packaging mapping file")
+    parser.add_argument("--out", type=Path, default=None, help="Output report path (only valid with a single --warehouse)")
+    args = parser.parse_args()
+
+    warehouses = ["US", "MX"] if args.warehouse == "ALL" else [args.warehouse]
+    if len(warehouses) > 1 and (args.export or args.out):
+        parser.error("--export/--out require a single --warehouse (US or MX), not ALL")
+
+    clean = True
+    for warehouse in warehouses:
+        clean &= run_for_warehouse(warehouse, args.export, args.mapping, args.out)
+
+    if not clean:
         sys.exit(1)
 
 

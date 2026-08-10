@@ -13,26 +13,32 @@ cp .env.example .env   # fill in CAMELOT_* credentials
 
 ## Old vs. new packaging report
 
-Camelot's SOAP API (`GetAvailableInventory`) does not expose a lot/batch
-field — confirmed both in the API docs and live (see
-`spike_check_lot_fields.py`). So batch-level detail has to come from a
-**manual lot/batch inventory export from the Camelot UI**.
+Covers both warehouses: US (Camelot) and MX (ShipHero). Camelot's SOAP
+API (`GetAvailableInventory`) does not expose a lot/batch field —
+confirmed both in the API docs and live (see `spike_check_lot_fields.py`)
+— so batch-level detail for both warehouses comes from **manual exports**
+rather than a live API pull.
 
-1. Export a lot-level inventory report from Camelot and drop it in
-   `data/camelot_exports/`.
+1. Export a lot-level inventory report and drop it in the matching
+   folder: `data/camelot_exports/` for US, `data/shiphero_exports/` for
+   MX.
 2. Put the batch-code -> product -> old/new packaging mapping file in
-   `data/mapping/`.
+   `data/mapping/`. One mapping file covers both warehouses' batch codes.
 3. Run:
 
    ```bash
-   .venv/bin/python scripts/packaging_report.py
+   .venv/bin/python scripts/packaging_report.py --warehouse US    # or MX, or ALL
+   .venv/bin/python scripts/build_share_report.py --warehouse US  # formatted Excel version
    ```
 
-   This picks the most recently modified file in each folder by default;
-   pass `--export` / `--mapping` to target specific files. Output goes to
-   `reports/`. Any batch code present in the export but missing from the
-   mapping is flagged (not silently dropped) and the script exits
-   non-zero so it can't be missed.
+   `--warehouse` defaults to `US`. `ALL` runs both and writes two
+   separate report files (not a combined one). Each picks the most
+   recently modified file in its warehouse's export folder by default;
+   pass `--export` / `--mapping` to target specific files (only valid
+   with a single `--warehouse`, not `ALL`). Output goes to `reports/`,
+   named with the warehouse code. Any batch code present in an export but
+   missing from the mapping is flagged (not silently dropped) and the
+   script exits non-zero so it can't be missed.
 
 ## Replenishment / PO coverage check
 
