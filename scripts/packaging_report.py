@@ -76,7 +76,12 @@ def _read_table(path: Path) -> pd.DataFrame:
     # includes "NA" and would otherwise silently turn it into a real null.
     if path.suffix.lower() == ".xlsx":
         return pd.read_excel(path, dtype=str, keep_default_na=False)
-    return pd.read_csv(path, dtype=str, keep_default_na=False)
+    try:
+        return pd.read_csv(path, dtype=str, keep_default_na=False, encoding="utf-8")
+    except UnicodeDecodeError:
+        # Some WebLink exports come out cp1252 instead of utf-8 (seen with
+        # accented product descriptions, e.g. "BUCHÓN").
+        return pd.read_csv(path, dtype=str, keep_default_na=False, encoding="cp1252")
 
 
 def _parse_qty(series: pd.Series) -> pd.Series:
