@@ -48,8 +48,13 @@ ITEM_ALIASES = ["item", "itemnumber", "item number", "sku", "product", "product 
 BATCH_ALIASES = [
     "batch", "batch code", "batch number", "batchno", "lot", "lot code",
     "lot number", "lotno", "lot no", "lot#", "lot #",
+    "name",  # ShipHero's lot-inventory export calls the lot field "name"
 ]
 QTY_ALIASES = ["qty", "quantity", "qtyonhand", "qty on hand", "on hand", "on hand qty", "onhandqty"]
+
+# Sentinel values each warehouse's system uses for "no lot/batch recorded":
+# Camelot uses "NA", ShipHero uses the Spanish "SINLOTE" ("no lot").
+NO_LOT_MARKERS = ["NA", "SINLOTE", ""]
 AVAILABLE_QTY_ALIASES = [
     "available qty", "availableqty", "qty available", "available quantity",
     "available", "available qty to order", "qty available to order",

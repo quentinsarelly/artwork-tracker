@@ -7,9 +7,9 @@ Three tabs:
   - "Packaging Summary" (sales): old vs. new packaging qty per product,
     for deciding what to allocate to each PO.
   - "Needs Lot Number" (warehouse): stock with no lot/batch code recorded
-    (LOT# = "NA" or blank) for products in the transition. Warehouse
-    should investigate and add the correct lot number, then re-run this
-    report.
+    (see NO_LOT_MARKERS in packaging_report.py — Camelot's "NA", ShipHero's
+    "SINLOTE", or blank) for products in the transition. Warehouse should
+    investigate and add the correct lot number, then re-run this report.
   - "Unmapped Batches": batch codes present in the export but not yet
     classified old/new in the mapping file — a mapping-file maintenance
     item, not a warehouse task.
@@ -35,6 +35,7 @@ from openpyxl.utils import get_column_letter
 
 from packaging_report import (
     ITEM_ALIASES,
+    NO_LOT_MARKERS,
     WAREHOUSES,
     _find_col,
     _latest_file,
@@ -46,7 +47,7 @@ from packaging_report import (
 
 ROOT = Path(__file__).resolve().parent.parent
 
-DESC_ALIASES = ["description", "item description", "desc", "itemdesc1"]
+DESC_ALIASES = ["description", "item description", "desc", "itemdesc1", "product_name", "product name"]
 
 
 def load_descriptions(path: Path) -> pd.DataFrame:
@@ -86,8 +87,9 @@ def build_summary(inventory: pd.DataFrame, mapping: pd.DataFrame, descriptions: 
     summary, unmapped = build_report(inventory, mapping)
     summary = summary.merge(descriptions, on="item", how="left")
     summary["description"] = summary["description"].fillna("")
+    # float("nan") rather than pd.NA: pd.NA doesn't support .round() below.
     summary["pct_old_packaging"] = (
-        summary["qty_old_packaging"] / summary["total_qty"].replace(0, pd.NA) * 100
+        summary["qty_old_packaging"] / summary["total_qty"].replace(0, float("nan")) * 100
     ).round(1)
     summary = summary[[
         "item", "description",
@@ -132,7 +134,7 @@ def build_summary(inventory: pd.DataFrame, mapping: pd.DataFrame, descriptions: 
 
 
 def build_needs_lot(unmapped: pd.DataFrame, descriptions: pd.DataFrame) -> pd.DataFrame:
-    needs_lot = unmapped[unmapped["batch"].isin(["NA", ""])].copy()
+    needs_lot = unmapped[unmapped["batch"].isin(NO_LOT_MARKERS)].copy()
     needs_lot = needs_lot.merge(descriptions, on="item", how="left")
     needs_lot["description"] = needs_lot["description"].fillna("")
     return needs_lot[["item", "description", "batch", "qty"]].rename(columns={
@@ -141,7 +143,7 @@ def build_needs_lot(unmapped: pd.DataFrame, descriptions: pd.DataFrame) -> pd.Da
 
 
 def build_unmapped_batches(unmapped: pd.DataFrame, descriptions: pd.DataFrame) -> pd.DataFrame:
-    other = unmapped[~unmapped["batch"].isin(["NA", ""])].copy()
+    other = unmapped[~unmapped["batch"].isin(NO_LOT_MARKERS)].copy()
     other = other.merge(descriptions, on="item", how="left")
     other["description"] = other["description"].fillna("")
     return other[["item", "description", "batch", "qty"]].rename(columns={
