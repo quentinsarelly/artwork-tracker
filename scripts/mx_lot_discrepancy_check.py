@@ -24,13 +24,16 @@ lists as packaging_report.py):
   data/shiphero_exports/*.csv (or .xlsx) -- ShipHero lot-level inventory
   export. Most recent file used unless --lot-export is given.
 
-Output: reports/mx_lot_discrepancy_<timestamp>.xlsx -- one row per SKU
-where the two totals disagree. A positive discrepancy means units are
-missing from the lot-level extract entirely (worse than SINLOTE, which
-is at least tracked with a placeholder). A negative discrepancy usually
-just means the two extracts were pulled at different times, not a real
-data-quality issue -- flagged separately so it doesn't get confused with
-the real problem.
+Output: reports/mx_lot_discrepancy_<timestamp>.xlsx, three tabs:
+  - "Missing From Lot Data": SKU-level qty exceeds the lot-level sum --
+    units with no lot record in ShipHero at all (worse than SINLOTE,
+    which is at least tracked with a placeholder). The real action item.
+  - "Lot Total Exceeds SKU Total": the reverse case, usually just means
+    the two extracts were pulled at different times, not a real
+    data-quality issue -- flagged separately so it doesn't get confused
+    with the real problem.
+  - "Matched": SKUs where the two extracts agree exactly -- reference
+    only, no action needed.
 
 Usage:
     python scripts/mx_lot_discrepancy_check.py
@@ -67,14 +70,14 @@ def load_lot_totals(path: Path) -> pd.DataFrame:
     return inventory.groupby("item", as_index=False)["qty"].sum()
 
 
-def build_discrepancy(sku_totals: pd.DataFrame, lot_totals: pd.DataFrame, descriptions: pd.DataFrame) -> pd.DataFrame:
+def build_comparison(sku_totals: pd.DataFrame, lot_totals: pd.DataFrame, descriptions: pd.DataFrame) -> pd.DataFrame:
+    """One row per SKU appearing in either extract, matched or not."""
     merged = sku_totals.merge(
         lot_totals, on="item", how="outer", suffixes=("_sku_extract", "_lot_extract")
     ).fillna(0)
     merged["qty_sku_extract"] = merged["qty_sku_extract"].astype(int)
     merged["qty_lot_extract"] = merged["qty_lot_extract"].astype(int)
     merged["discrepancy"] = merged["qty_sku_extract"] - merged["qty_lot_extract"]
-    merged = merged[merged["discrepancy"] != 0]
     merged = merged.merge(descriptions, on="item", how="left")
     merged["description"] = merged["description"].fillna("")
 
@@ -104,9 +107,12 @@ def main() -> None:
     lot_totals = load_lot_totals(lot_export_path)
     descriptions = load_descriptions(lot_export_path)
 
-    discrepancy = build_discrepancy(sku_totals, lot_totals, descriptions)
-    missing_from_lot = discrepancy[discrepancy["Discrepancy (Missing From Lot Data)"] > 0]
-    extra_in_lot = discrepancy[discrepancy["Discrepancy (Missing From Lot Data)"] < 0]
+    comparison = build_comparison(sku_totals, lot_totals, descriptions)
+    missing_from_lot = comparison[comparison["Discrepancy (Missing From Lot Data)"] > 0]
+    extra_in_lot = comparison[comparison["Discrepancy (Missing From Lot Data)"] < 0]
+    matched = comparison[comparison["Discrepancy (Missing From Lot Data)"] == 0].drop(
+        columns=["Discrepancy (Missing From Lot Data)"]
+    )
 
     out_path = args.out or ROOT / "reports" / f"mx_lot_discrepancy_{datetime.now():%Y%m%d_%H%M%S}.xlsx"
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -125,10 +131,16 @@ def main() -> None:
                  "the two extracts were pulled at different times — re-run both together before "
                  "treating this as a real discrepancy.",
         )
+        _write_sheet(
+            writer, matched, "Matched",
+            note="SKUs where the SKU-level and lot-level extracts agree exactly — already correctly "
+                 "lot-tracked, no action needed. Included for reference only.",
+        )
 
     print(f"\nWrote discrepancy report to {out_path}")
     print(f"  Missing From Lot Data:        {len(missing_from_lot)} SKUs, {int(missing_from_lot['Discrepancy (Missing From Lot Data)'].sum()) if len(missing_from_lot) else 0} units")
     print(f"  Lot Total Exceeds SKU Total:   {len(extra_in_lot)} SKUs")
+    print(f"  Matched:                      {len(matched)} SKUs")
 
 
 if __name__ == "__main__":
