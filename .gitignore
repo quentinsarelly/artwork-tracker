@@ -13,6 +13,8 @@ data/camelot_exports/*
 !data/camelot_exports/.gitkeep
 data/shiphero_exports/*
 !data/shiphero_exports/.gitkeep
+data/shiphero_sku_totals/*
+!data/shiphero_sku_totals/.gitkeep
 data/mapping/*
 !data/mapping/.gitkeep
 reports/*

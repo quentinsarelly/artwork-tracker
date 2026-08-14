@@ -40,6 +40,34 @@ rather than a live API pull.
    missing from the mapping is flagged (not silently dropped) and the
    script exits non-zero so it can't be missed.
 
+## MX lot-tracking discrepancy check
+
+ShipHero's SKU-level quantity export (total on-hand per SKU) doesn't
+always match the sum of the lot-level inventory export used above —
+some units have no lot record in ShipHero at all. That's a different,
+more severe issue than "Needs Lot Number" in the packaging report, which
+only catches units that *are* in the lot extract but tagged with the
+`SINLOTE` placeholder — units missing from the lot extract entirely
+don't show up there because they're absent from that file, not
+present-with-a-placeholder.
+
+1. Export a SKU-level quantity report from ShipHero (all SKUs, total
+   on-hand qty, no lot breakdown) and drop it in
+   `data/shiphero_sku_totals/`.
+2. Run:
+
+   ```bash
+   .venv/bin/python scripts/mx_lot_discrepancy_check.py
+   ```
+
+   Picks the most recent file in `data/shiphero_sku_totals/` and
+   `data/shiphero_exports/` by default; pass `--sku-totals` /
+   `--lot-export` to target specific files. Output is an Excel file in
+   `reports/` with two tabs: SKUs missing from the lot data entirely
+   (the real warehouse action item), and SKUs where the lot extract
+   exceeds the SKU extract (usually just means the two exports weren't
+   pulled at the same time, not a real issue).
+
 ## Replenishment / PO coverage check
 
 Pulls current on-hand inventory live from Camelot and compares it against
