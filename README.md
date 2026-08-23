@@ -16,12 +16,13 @@ cp .env.example .env   # fill in CAMELOT_* credentials
 Covers both warehouses: US (Camelot) and MX (ShipHero). Camelot's SOAP
 API (`GetAvailableInventory`) does not expose a lot/batch field —
 confirmed both in the API docs and live (see `spike_check_lot_fields.py`)
-— so batch-level detail for both warehouses comes from **manual exports**
-rather than a live API pull.
+— so batch-level detail for the US warehouse comes from **manual
+exports**. The MX warehouse can be pulled straight from ShipHero's API
+(see `scripts/pull_shiphero_extract.py`), or fed with a manual export.
 
-1. Export a lot-level inventory report and drop it in the matching
-   folder: `data/camelot_exports/` for US, `data/shiphero_exports/` for
-   MX.
+1. Get a lot-level inventory report into the matching folder:
+   `data/camelot_exports/` for US (manual), `data/shiphero_exports/`
+   for MX (manual export, or run the API pull below).
 2. Put the batch-code -> product -> old/new packaging mapping file in
    `data/mapping/`. One mapping file covers both warehouses' batch codes.
 3. Run:
@@ -39,6 +40,22 @@ rather than a live API pull.
    named with the warehouse code. Any batch code present in an export but
    missing from the mapping is flagged (not silently dropped) and the
    script exits non-zero so it can't be missed.
+
+## MX inventory pull via ShipHero API
+
+```bash
+.venv/bin/python scripts/pull_shiphero_extract.py
+```
+
+Pulls lot-level stock live (GraphQL `item_locations`: one row per SKU
+per bin per lot — real binned stock, kits excluded) and writes
+`data/shiphero_exports/shiphero_api_<timestamp>.csv`, which downstream
+packaging scripts pick up automatically as the latest MX export.
+Requires `SHIPHERO_REFRESH_TOKEN` in `.env` (same one
+inventory-snapshot's mx_3pl connector uses). Lot-less bins are written
+with an empty lot and the SINLOTE placeholder passes through verbatim —
+both bucket as "Needs Lot Number" downstream, never as a real artwork
+version.
 
 ## MX lot-tracking discrepancy check
 
