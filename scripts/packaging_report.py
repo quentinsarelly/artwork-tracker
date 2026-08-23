@@ -46,20 +46,49 @@ WAREHOUSES = {
 
 ITEM_ALIASES = ["item", "itemnumber", "item number", "sku", "product", "product sku"]
 BATCH_ALIASES = [
-    "batch", "batch code", "batch number", "batchno", "lot", "lot code",
-    "lot number", "lotno", "lot no", "lot#", "lot #",
+    "batch",
+    "batch code",
+    "batch number",
+    "batchno",
+    "lot",
+    "lot code",
+    "lot number",
+    "lotno",
+    "lot no",
+    "lot#",
+    "lot #",
     "name",  # ShipHero's lot-inventory export calls the lot field "name"
 ]
-QTY_ALIASES = ["qty", "quantity", "qtyonhand", "qty on hand", "on hand", "on hand qty", "onhandqty"]
+QTY_ALIASES = [
+    "qty",
+    "quantity",
+    "qtyonhand",
+    "qty on hand",
+    "on hand",
+    "on hand qty",
+    "onhandqty",
+]
 
 # Sentinel values each warehouse's system uses for "no lot/batch recorded":
 # Camelot uses "NA", ShipHero uses the Spanish "SINLOTE" ("no lot").
 NO_LOT_MARKERS = ["NA", "SINLOTE", ""]
 AVAILABLE_QTY_ALIASES = [
-    "available qty", "availableqty", "qty available", "available quantity",
-    "available", "available qty to order", "qty available to order",
+    "available qty",
+    "availableqty",
+    "qty available",
+    "available quantity",
+    "available",
+    "available qty to order",
+    "qty available to order",
 ]
-PACKAGING_ALIASES = ["packaging", "packaging version", "old_new", "old/new", "version", "presentation"]
+PACKAGING_ALIASES = [
+    "packaging",
+    "packaging version",
+    "old_new",
+    "old/new",
+    "version",
+    "presentation",
+]
 
 
 def _find_col(columns: list[str], aliases: list[str], required_for: str) -> str:
@@ -75,7 +104,11 @@ def _find_col(columns: list[str], aliases: list[str], required_for: str) -> str:
 
 def _latest_file(directory: Path) -> Path:
     candidates = sorted(
-        [p for p in directory.glob("*") if p.suffix.lower() in (".csv", ".xlsx") and p.name != ".gitkeep"],
+        [
+            p
+            for p in directory.glob("*")
+            if p.suffix.lower() in (".csv", ".xlsx") and p.name != ".gitkeep"
+        ],
         key=lambda p: p.stat().st_mtime,
         reverse=True,
     )
@@ -101,7 +134,11 @@ def _read_table(path: Path) -> pd.DataFrame:
 def _parse_qty(series: pd.Series) -> pd.Series:
     # Camelot's export uses thousands separators (e.g. "4,994") which
     # to_numeric would otherwise silently coerce to NaN -> 0.
-    return pd.to_numeric(series.str.replace(",", "", regex=False), errors="coerce").fillna(0).astype(int)
+    return (
+        pd.to_numeric(series.str.replace(",", "", regex=False), errors="coerce")
+        .fillna(0)
+        .astype(int)
+    )
 
 
 def load_export(path: Path) -> pd.DataFrame:
@@ -111,7 +148,9 @@ def load_export(path: Path) -> pd.DataFrame:
     qty_col = _find_col(list(df.columns), QTY_ALIASES, "quantity on hand")
 
     try:
-        avail_col = _find_col(list(df.columns), AVAILABLE_QTY_ALIASES, "available quantity")
+        avail_col = _find_col(
+            list(df.columns), AVAILABLE_QTY_ALIASES, "available quantity"
+        )
     except SystemExit:
         print(
             "WARNING: no 'Available Qty' column found in the export — "
@@ -130,7 +169,11 @@ def load_export(path: Path) -> pd.DataFrame:
 
 
 def load_mapping(path: Path) -> pd.DataFrame:
-    df = _read_table(path)
+    return load_mapping_df(_read_table(path))
+
+
+def load_mapping_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Validate a raw mapping table (item/batch/packaging columns)."""
     item_col = _find_col(list(df.columns), ITEM_ALIASES, "item/SKU")
     batch_col = _find_col(list(df.columns), BATCH_ALIASES, "batch/lot code")
     pkg_col = _find_col(list(df.columns), PACKAGING_ALIASES, "packaging (old/new)")
@@ -144,13 +187,15 @@ def load_mapping(path: Path) -> pd.DataFrame:
     bad = ~out["packaging"].isin(["old", "new"])
     if bad.any():
         raise SystemExit(
-            "Mapping file has packaging values other than 'old'/'new':\n"
+            "Mapping has packaging values other than 'old'/'new':\n"
             f"{out.loc[bad, ['item', 'batch', 'packaging']]}"
         )
     return out
 
 
-def build_report(inventory: pd.DataFrame, mapping: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+def build_report(
+    inventory: pd.DataFrame, mapping: pd.DataFrame
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     # Only products named in the mapping file are part of the packaging
     # transition. Without this filter, every batch of every unrelated
     # product in the warehouse would show up as "unmapped" noise.
@@ -168,17 +213,26 @@ def build_report(inventory: pd.DataFrame, mapping: pd.DataFrame) -> tuple[pd.Dat
         .unstack(fill_value=0)
     )
     pivot.columns = [f"{value_col}_{pkg}" for value_col, pkg in pivot.columns]
-    pivot = pivot.reindex(
-        columns=["qty_old", "qty_new", "available_qty_old", "available_qty_new"], fill_value=0
-    ).rename(columns={
-        "qty_old": "qty_old_packaging",
-        "qty_new": "qty_new_packaging",
-        "available_qty_old": "available_qty_old_packaging",
-        "available_qty_new": "available_qty_new_packaging",
-    }).reset_index()
+    pivot = (
+        pivot.reindex(
+            columns=["qty_old", "qty_new", "available_qty_old", "available_qty_new"],
+            fill_value=0,
+        )
+        .rename(
+            columns={
+                "qty_old": "qty_old_packaging",
+                "qty_new": "qty_new_packaging",
+                "available_qty_old": "available_qty_old_packaging",
+                "available_qty_new": "available_qty_new_packaging",
+            }
+        )
+        .reset_index()
+    )
 
     pivot["total_qty"] = pivot["qty_old_packaging"] + pivot["qty_new_packaging"]
-    pivot["total_available_qty"] = pivot["available_qty_old_packaging"] + pivot["available_qty_new_packaging"]
+    pivot["total_available_qty"] = (
+        pivot["available_qty_old_packaging"] + pivot["available_qty_new_packaging"]
+    )
 
     old_only = mapped[mapped["packaging"] == "old"]
     if old_only.empty:
@@ -186,7 +240,10 @@ def build_report(inventory: pd.DataFrame, mapping: pd.DataFrame) -> tuple[pd.Dat
     else:
         old_batches = (
             old_only.groupby("item")
-            .apply(lambda g: ", ".join(f"{b} ({q})" for b, q in zip(g["batch"], g["qty"])), include_groups=False)
+            .apply(
+                lambda g: ", ".join(f"{b} ({q})" for b, q in zip(g["batch"], g["qty"])),
+                include_groups=False,
+            )
             .rename("old_packaging_batches")
             .reset_index()
         )
@@ -196,7 +253,9 @@ def build_report(inventory: pd.DataFrame, mapping: pd.DataFrame) -> tuple[pd.Dat
     return pivot.sort_values("item"), unmapped
 
 
-def run_for_warehouse(warehouse: str, export: Path | None, mapping: Path | None, out: Path | None) -> bool:
+def run_for_warehouse(
+    warehouse: str, export: Path | None, mapping: Path | None, out: Path | None
+) -> bool:
     """Returns True if the report came out clean (no unmapped batches)."""
     print(f"\n=== {WAREHOUSES[warehouse]['label']} ===")
 
@@ -211,7 +270,12 @@ def run_for_warehouse(warehouse: str, export: Path | None, mapping: Path | None,
 
     report, unmapped = build_report(inventory, mapping_df)
 
-    out_path = out or ROOT / "reports" / f"packaging_report_{warehouse}_{datetime.now():%Y%m%d_%H%M%S}.csv"
+    out_path = (
+        out
+        or ROOT
+        / "reports"
+        / f"packaging_report_{warehouse}_{datetime.now():%Y%m%d_%H%M%S}.csv"
+    )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     report.to_csv(out_path, index=False)
 
@@ -223,17 +287,38 @@ def run_for_warehouse(warehouse: str, export: Path | None, mapping: Path | None,
             f"\n*** WARNING: {len(unmapped)} inventory rows had no mapping entry and were "
             "EXCLUDED from the report (not counted as old or new). Add these to the mapping file: ***"
         )
-        print(unmapped[["item", "batch", "qty"]].drop_duplicates().to_string(index=False))
+        print(
+            unmapped[["item", "batch", "qty"]].drop_duplicates().to_string(index=False)
+        )
         return False
     return True
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--warehouse", choices=["US", "MX", "ALL"], default="US", help="Which warehouse to report on")
-    parser.add_argument("--export", type=Path, default=None, help="Inventory export file (only valid with a single --warehouse)")
-    parser.add_argument("--mapping", type=Path, default=None, help="Batch -> packaging mapping file")
-    parser.add_argument("--out", type=Path, default=None, help="Output report path (only valid with a single --warehouse)")
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "--warehouse",
+        choices=["US", "MX", "ALL"],
+        default="US",
+        help="Which warehouse to report on",
+    )
+    parser.add_argument(
+        "--export",
+        type=Path,
+        default=None,
+        help="Inventory export file (only valid with a single --warehouse)",
+    )
+    parser.add_argument(
+        "--mapping", type=Path, default=None, help="Batch -> packaging mapping file"
+    )
+    parser.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="Output report path (only valid with a single --warehouse)",
+    )
     args = parser.parse_args()
 
     warehouses = ["US", "MX"] if args.warehouse == "ALL" else [args.warehouse]

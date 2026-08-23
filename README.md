@@ -82,6 +82,44 @@ shipped/staged order status, so that source isn't wired in yet).
 Flags any product where demand exceeds on-hand inventory, meaning more
 stock needs to ship from origin to the US.
 
+## Google Sheets push
+
+Pushes the packaging report (available qty per product, split old/new
+packaging) to Google Sheets — one tab per warehouse (`US` and `MX`),
+cleared and rewritten on every run. A third tab (**SKU List**) is the
+minimum-coverage list you maintain: every SKU on it is forced onto both
+warehouse tabs (zeros if no stock). A fourth tab (**SKU Coverage**)
+outer-joins both raw exports on SKU and flags each as Both / US only /
+MX only / Neither, with a Required column (mismatches first), so a SKU
+stocked in one warehouse but not the other — or a required SKU with no
+stock anywhere — can't go unnoticed. The batch -> packaging mapping is
+read from the same spreadsheet's **`Mapping`** tab (columns: item/SKU,
+batch/lot code, packaging old/new) so it can be maintained in one place;
+`--mapping <file>` overrides with a local file instead.
+
+One-time setup:
+
+1. In the Google Cloud console, create an OAuth client ID
+   (Desktop app) with the Sheets API and Drive API enabled.
+2. Put its client ID and secret in `.env` as `GOOGLE_OAUTH_CLIENT_ID` /
+   `GOOGLE_OAUTH_CLIENT_SECRET` (or download the client-secret JSON to
+   `~/.config/gspread/credentials.json` instead).
+3. Create (or pick) a spreadsheet containing a `Mapping` tab, and put its
+   ID in `.env` as `GOOGLE_SHEET_ID` (or just its title as
+   `GOOGLE_SHEET_NAME`).
+
+Then run:
+
+```bash
+.venv/bin/python scripts/push_to_sheets.py              # both warehouses
+.venv/bin/python scripts/push_to_sheets.py --dry-run    # preview, no push
+```
+
+The first run opens a browser to authorize once; the token is cached at
+`~/.config/gspread/authorized_user.json`. Uses the same inputs as
+`packaging_report.py`, but batches missing from the mapping are counted
+in an "Unknown" column and flagged per row (not excluded).
+
 ## Camelot credentials
 
 Shared with `apisandbox` and `inventory-snapshot-system` — same Excalibur
