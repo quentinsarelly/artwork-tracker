@@ -13,16 +13,14 @@ cp .env.example .env   # fill in CAMELOT_* credentials
 
 ## Old vs. new packaging report
 
-Covers both warehouses: US (Camelot) and MX (ShipHero). Camelot's SOAP
-API (`GetAvailableInventory`) does not expose a lot/batch field —
-confirmed both in the API docs and live (see `spike_check_lot_fields.py`)
-— so batch-level detail for the US warehouse comes from **manual
-exports**. The MX warehouse can be pulled straight from ShipHero's API
-(see `scripts/pull_shiphero_extract.py`), or fed with a manual export.
+Covers both warehouses: US (Camelot) and MX (ShipHero). Both can now be
+pulled lot-level straight from their APIs — see
+`scripts/pull_camelot_lot_extract.py` (US) and
+`scripts/pull_shiphero_extract.py` (MX) — or fed with a manual export.
 
 1. Get a lot-level inventory report into the matching folder:
-   `data/camelot_exports/` for US (manual), `data/shiphero_exports/`
-   for MX (manual export, or run the API pull below).
+   `data/camelot_exports/` for US, `data/shiphero_exports/` for MX
+   (run the API pull below, or drop in a manual export).
 2. Put the batch-code -> product -> old/new packaging mapping file in
    `data/mapping/`. One mapping file covers both warehouses' batch codes.
 3. Run:
@@ -40,6 +38,38 @@ exports**. The MX warehouse can be pulled straight from ShipHero's API
    named with the warehouse code. Any batch code present in an export but
    missing from the mapping is flagged (not silently dropped) and the
    script exits non-zero so it can't be missed.
+
+## US inventory pull via Camelot API
+
+```bash
+.venv/bin/python scripts/pull_camelot_lot_extract.py
+```
+
+Pulls lot-level stock live and writes
+`data/camelot_exports/camelot_api_<timestamp>.csv`, which downstream
+packaging scripts pick up automatically as the latest US export — it
+replaces the manual "WebLink - Lot Inventory" download from the Camelot
+UI and is written with the same column names.
+
+Same `GetAvailableInventory` call as the item-level pull, but with the
+piece-inventory interface profile (`SAR_PINV_E`, override with
+`CAMELOT_PIECE_PROFILE`), which swaps the response payload for XMLPort
+37005332. **Camelot asks that this be pulled no more than once or twice
+a day**, since it splits rows down to the pallet.
+
+Two differences from the WebLink report to be aware of:
+
+- More rows for the same stock: one row per item + lot + receipt + bin +
+  inventory status, where the UI report collapses those. Totals per
+  item/lot are identical.
+- No `QtyAvailableToOrder` field in this payload, so `Available Qty` is
+  reconstructed as `CountQty - CountQtyCommit`, with rows carrying a
+  non-blank `InvStatus` (e.g. QC hold) counted as zero-available and
+  their quantity reported under `Status Qty`. Verified against the
+  manual export: this reproduces the UI's `Available Qty` exactly.
+
+Camelot's `NA` placeholder lot passes through verbatim and buckets as
+"Needs Lot Number" downstream, never as a real artwork version.
 
 ## MX inventory pull via ShipHero API
 

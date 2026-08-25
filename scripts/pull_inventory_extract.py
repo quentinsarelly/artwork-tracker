@@ -3,13 +3,12 @@ Pull a full inventory extract from Camelot via the SOAP API
 (GetAvailableInventory) and save it as CSV.
 
 NOTE: this is item-level only — QtyOnHand/QtyAvailable/QtyReserved per
-ItemNumber. It does NOT include batch/lot codes (the API doesn't expose
-them — see spike_check_lot_fields.py and camelot_client.py). For the old
-vs. new packaging report, this extract is not sufficient on its own; you
-still need a manual lot-level export from the Camelot UI for
-scripts/packaging_report.py. This script is useful for total on-hand
-quantities per item (e.g. as input to scripts/replenishment_check.py, or
-just to see current stock levels).
+ItemNumber, with no batch/lot breakdown. For lot-level detail use
+scripts/pull_camelot_lot_extract.py instead (same call, piece-inventory
+interface profile), which is what scripts/packaging_report.py needs.
+This script stays useful for total on-hand quantities per item — it
+keeps Camelot's own QtyAvailableToOrder, which the piece payload doesn't
+carry — e.g. as input to scripts/replenishment_check.py.
 
 Output: reports/inventory_extract_<timestamp>.csv
 

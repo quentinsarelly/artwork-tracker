@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xs:schema attributeFormDefault="unqualified" elementFormDefault="qualified" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Transaction">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="ItemFilter" minOccurs="0" maxOccurs="1">
+          <xs:complexType/>
+        </xs:element>
+        <xs:element name="Inventory" minOccurs="0" maxOccurs="unbounded">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="Client" type="xs:string" minOccurs="0"/>
+              <xs:element name="Item" type="xs:string" minOccurs="0"/>
+              <xs:element name="ItemSub1" type="xs:string" minOccurs="0"/>
+              <xs:element name="ItemSub2" type="xs:string" minOccurs="0"/>
+              <xs:element name="Description" type="xs:string" minOccurs="0"/>
+              <xs:element name="Description2" type="xs:string" minOccurs="0"/>
+              <xs:element name="CountQty" type="xs:decimal" minOccurs="0"/>
+              <xs:element name="CountQtyCommit" type="xs:decimal" minOccurs="0"/>
+              <xs:element name="CountUnit" type="xs:string" minOccurs="0"/>
+              <xs:element name="Alt1Qty" type="xs:decimal" minOccurs="0"/>
+              <xs:element name="Alt1Commit" type="xs:decimal" minOccurs="0"/>
+              <xs:element name="Alt1Unit" type="xs:string" minOccurs="0"/>
+              <xs:element name="Alt2Qty" type="xs:decimal" minOccurs="0"/>
+              <xs:element name="Alt2Commit" type="xs:decimal" minOccurs="0"/>
+              <xs:element name="Alt2Unit" type="xs:string" minOccurs="0"/>
+              <xs:element name="Pack" type="xs:decimal" minOccurs="0"/>
+              <xs:element name="NetWgt" type="xs:decimal" minOccurs="0"/>
+              <xs:element name="GrsWgt" type="xs:decimal" minOccurs="0"/>
+              <xs:element name="Lot" type="xs:string" minOccurs="0"/>
+              <xs:element name="Whse" type="xs:string" minOccurs="0"/>
+              <xs:element name="Bin" type="xs:string" minOccurs="0"/>
+              <xs:element name="Bay" type="xs:string" minOccurs="0"/>
+              <xs:element name="InvStatus" type="xs:string" minOccurs="0"/>
+              <xs:element name="SubLot" type="xs:string" minOccurs="0"/>
+              <xs:element name="GroupID" type="xs:string" minOccurs="0"/>
+              <xs:element name="TagID" type="xs:string" minOccurs="0"/>
+              <xs:element name="PieceCodeDate" type="xs:string" minOccurs="0"/>
+              <xs:element name="PieceUserCode1" type="xs:string" minOccurs="0"/>
+              <xs:element name="PieceUserCode2" type="xs:string" minOccurs="0"/>
+              <xs:element name="PieceUserCode3" type="xs:string" minOccurs="0"/>
+              <xs:element name="PieceUserText" type="xs:string" minOccurs="0"/>
+              <xs:element name="PieceUserDec1" type="xs:decimal" minOccurs="0"/>
+              <xs:element name="PieceUserDec2" type="xs:decimal" minOccurs="0"/>
+              <xs:element name="Receipt" type="xs:string" minOccurs="0"/>
+              <xs:element name="RececiptDate" type="xs:string" minOccurs="0"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+      <xs:attribute name="Type" type="xs:string" use="required"/>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

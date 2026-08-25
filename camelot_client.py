@@ -33,6 +33,7 @@ _USERNAME = os.getenv("CAMELOT_USERNAME")
 _PASSWORD = os.getenv("CAMELOT_PASSWORD")
 
 _NS = "urn:microsoft-dynamics-schemas/codeunit/TPLWebServiceInt"
+_PIECE_PROFILE = os.getenv("CAMELOT_PIECE_PROFILE", "SAR_PINV_E")
 _NS_SOAP = "http://schemas.xmlsoap.org/soap/envelope/"
 
 _ENVELOPE = """\
@@ -108,8 +109,9 @@ def _parse_xml_doc(xml_string: str) -> ET.Element | None:
 
 
 class CamelotClient:
-    def __init__(self, interface_profile: str = "", client_code: str = "", trading_partner: str = ""):
+    def __init__(self, interface_profile: str = "", client_code: str = "", trading_partner: str = "", piece_profile: str = ""):
         self.profile = interface_profile or os.getenv("CAMELOT_INTERFACE_PROFILE", "")
+        self.piece_profile = piece_profile or _PIECE_PROFILE
         self.client = client_code or os.getenv("CAMELOT_CLIENT", "")
         self.partner = trading_partner or os.getenv("CAMELOT_TRADING_PARTNER", "")
 
@@ -139,9 +141,31 @@ class CamelotClient:
         """GetAvailableInventory — XML inventory for all items, or filter by client/item.
         Standard interface object: XMLPort 37005331 PW Item Inventory Export.
         Known response fields: ItemNumber, QtyOnHand, QtyReserved, QtyAvailable.
-        No lot/batch field is documented — see spike_check_lot_fields.py.
+        Item-level only — for lot/batch detail use get_piece_inventory().
         """
         params = {**self._base(), "pClientFilter": client_filter, "pItem": item}
+        resp = _call("GetAvailableInventory", params)
+        return _parse_xml_doc(_text(resp, "pXMLDoc"))
+
+    def get_piece_inventory(
+        self, client_filter: str = "", item: str = "", interface_profile: str = ""
+    ) -> ET.Element | None:
+        """Lot-level inventory — same GetAvailableInventory call, different
+        interface profile (SAR_PINV_E), which swaps the response payload for
+        XMLPort 37005332 (Transaction Type="Piece Inventory").
+
+        One row per item + lot + receipt + bin + inventory status, so an
+        item/lot can span several rows. Fields: Item, Lot, Whse, Bin,
+        InvStatus, CountQty, CountQtyCommit, CountUnit, Alt1*, GrsWgt,
+        Receipt, RececiptDate (Camelot's spelling), PieceCodeDate.
+
+        Note this payload has no QtyAvailableToOrder — availability is
+        recomputed downstream as CountQty - CountQtyCommit, with rows
+        carrying a non-blank InvStatus (e.g. QC) counted as unavailable.
+        Camelot asks that this be pulled no more than once or twice a day.
+        """
+        params = {**self._base(), "pClientFilter": client_filter, "pItem": item}
+        params["pInterfaceProfile"] = interface_profile or self.piece_profile
         resp = _call("GetAvailableInventory", params)
         return _parse_xml_doc(_text(resp, "pXMLDoc"))
 
