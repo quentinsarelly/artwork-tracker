@@ -19,14 +19,18 @@ has no stock or is missing from an export. A fourth tab ("SKU
 Coverage") outer-joins both raw exports on SKU and flags each as Both /
 US only / MX only / Neither, with a Required column — mismatches first.
 
-Auth: gspread's default OAuth flow. First run opens a browser to log in
-to the Google account that owns (or can edit) the target spreadsheet;
-the token is cached at ~/.config/gspread/authorized_user.json.
+Auth: gspread's OAuth flow, using GOOGLE_OAUTH_CLIENT_ID/SECRET from
+.env if set, else the project-local oauth_credentials.json (not
+gspread's default ~/.config/gspread/credentials.json). First run opens
+a browser to log in to the Google account that owns (or can edit) the
+target spreadsheet; the token is cached at
+~/.config/gspread/authorized_user.json.
 
 Setup:
-    Put OAuth client credentials at ~/.config/gspread/credentials.json
-    (Google Cloud console -> APIs & Services -> Credentials -> OAuth
-    client ID -> Desktop app; enable the Google Sheets API + Drive API).
+    Put OAuth client credentials at oauth_credentials.json in the repo
+    root (Google Cloud console -> APIs & Services -> Credentials ->
+    OAuth client ID -> Desktop app; enable the Google Sheets API +
+    Drive API). Gitignored — never commit it.
 
 Usage:
     python scripts/push_to_sheets.py                     # both warehouses
@@ -201,6 +205,17 @@ def _client_config_from_env() -> dict:
     }
 
 
+def _manual_local_server_flow(client_config, scopes, port=0):
+    """Like gspread's default local_server_flow, but don't try to
+    auto-launch a browser (that hangs/fails under WSL with no GUI
+    browser handler) — just print the URL and wait for the user to
+    open it themselves and complete the sign-in."""
+    from google_auth_oauthlib.flow import InstalledAppFlow
+
+    flow = InstalledAppFlow.from_client_config(client_config, scopes)
+    return flow.run_local_server(port=port, open_browser=False)
+
+
 def open_spreadsheet(sheet_id: str | None, sheet_name: str | None):
     import json
 
@@ -216,14 +231,19 @@ def open_spreadsheet(sheet_id: str | None, sheet_name: str | None):
         gc, user_info = gspread.oauth_from_dict(
             credentials=_client_config_from_env(),
             authorized_user_info=authorized_user_info,
+            flow=_manual_local_server_flow,
         )
         if not authorized_user_info:
             token_cache.parent.mkdir(parents=True, exist_ok=True)
             # oauth_from_dict returns the safe-to-store info as a JSON string
             token_cache.write_text(user_info)
     else:
-        # Fall back to gspread's default: ~/.config/gspread/credentials.json
-        gc = gspread.oauth()
+        # Fall back to the project-local OAuth client file (not
+        # gspread's default ~/.config/gspread/credentials.json).
+        gc = gspread.oauth(
+            credentials_filename=ROOT / "oauth_credentials.json",
+            flow=_manual_local_server_flow,
+        )
 
     if sheet_id:
         return gc.open_by_key(sheet_id)

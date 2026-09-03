@@ -98,9 +98,26 @@ only catches units that *are* in the lot extract but tagged with the
 don't show up there because they're absent from that file, not
 present-with-a-placeholder.
 
-1. Export a SKU-level quantity report from ShipHero (all SKUs, total
-   on-hand qty, no lot breakdown) and drop it in
-   `data/shiphero_sku_totals/`.
+1. Get a SKU-level quantity export into `data/shiphero_sku_totals/`
+   (all SKUs, total on-hand qty, no lot breakdown):
+
+   ```bash
+   .venv/bin/python scripts/pull_shiphero_sku_totals.py
+   ```
+
+   Pulls live via ShipHero's `warehouse_products` query (same one
+   inventory-snapshot's mx_3pl connector uses) and writes
+   `shiphero_sku_totals_api_<timestamp>.csv`, which this check picks up
+   automatically as the latest file — or drop in a manual export
+   instead. Unlike `pull_shiphero_extract.py`'s `item_locations`, this
+   includes kits (`on_hand` double-counts virtual bundles), which is
+   exactly why the comparison below catches them as a "discrepancy" —
+   same as a manual export would.
+
+   For results to mean anything, pull both extracts back-to-back —
+   `pull_shiphero_sku_totals.py` then `pull_shiphero_extract.py` (or
+   vice versa) — since "Lot Total Exceeds SKU Total" below is mostly
+   just a symptom of the two being pulled minutes/hours apart.
 2. Run:
 
    ```bash

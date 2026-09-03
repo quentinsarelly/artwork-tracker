@@ -1,6 +1,7 @@
 # OAuth client secrets and cached tokens must never be committed
 client_secret*.json
 authorized_user.json
+oauth_credentials.json
 
 .env
 __pycache__/

@@ -118,3 +118,40 @@ def iter_item_locations(sku: list[str] | None = None) -> "iter[dict]":
         if not page["pageInfo"]["hasNextPage"]:
             return
         cursor = page["pageInfo"]["endCursor"]
+
+
+# SKU-level totals, independent of lot/bin data — the same query
+# inventory-snapshot's mx_3pl connector uses for its daily on_hand
+# snapshot. Includes kits (on_hand double-counts virtual bundles; see
+# inventory-snapshot/ARTWORK_TRACKING.md), unlike item_locations.
+WAREHOUSE_PRODUCTS_QUERY = """
+query WarehouseProducts($after: String) {
+    warehouse_products(active: true) {
+        data(first: 100, after: $after) {
+            edges {
+                node {
+                    sku
+                    on_hand
+                    available
+                    allocated
+                }
+            }
+            pageInfo { hasNextPage endCursor }
+        }
+    }
+}
+"""
+
+
+def iter_warehouse_products() -> "iter[dict]":
+    """Yield one node per active SKU with its total on-hand/available/allocated qty."""
+    cursor: str | None = None
+    while True:
+        variables: dict = {"after": cursor} if cursor else {}
+        data = query(WAREHOUSE_PRODUCTS_QUERY, variables)
+        page = data["warehouse_products"]["data"]
+        for edge in page["edges"]:
+            yield edge["node"]
+        if not page["pageInfo"]["hasNextPage"]:
+            return
+        cursor = page["pageInfo"]["endCursor"]
